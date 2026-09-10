@@ -1,6 +1,6 @@
 # Lunar Jackpot
 
-**[🎰 Play Lunar Jackpot](https://YOUR-SITE.onrender.com)**
+**[🎰 Play Lunar Jackpot](https://lunar-jackpot.onrender.com)**
 
 A web-based incremental casino game with roguelite elements!
 
