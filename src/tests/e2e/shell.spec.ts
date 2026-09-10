@@ -5892,20 +5892,20 @@ test.describe("expedition scene", () => {
     const expedition = page.getByRole("region", { name: "Launch Expedition" });
 
     // Nothing behind the surface: there is no "where" to be yet.
+    await expect(page.getByRole("img", { name: "Expedition scene: on the surface.", exact: true })).toBeVisible();
+    await expect.poll(async () => (await canvasColours(page))["5,5,5"] ?? 0).toBeGreaterThan(0);
     const onSurface = await canvasColours(page);
 
     expect(onSurface["26,26,26"] ?? 0).toBe(0);
 
     await expedition.getByRole("button", { name: "Launch expedition" }).click();
     await expect(expedition).toContainText("Depth", { timeout: 20_000 });
-    await page.waitForTimeout(400);
-
-    // Both silhouette layers, in their own two greys. Read off the canvas
-    // because the scene is painted rather than marked up.
-    const underway = await canvasColours(page);
-
-    expect(underway["26,26,26"] ?? 0).toBeGreaterThan(0);
-    expect(underway["43,43,43"] ?? 0).toBeGreaterThan(0);
+    // Wait for both painted layers, rather than assuming a frame has rendered
+    // within a fixed delay on a busy CI runner.
+    await expect.poll(async () => {
+      const colours = await canvasColours(page);
+      return (colours["26,26,26"] ?? 0) > 0 && (colours["43,43,43"] ?? 0) > 0;
+    }, { timeout: 20_000 }).toBe(true);
   });
 
   test("keeps the backdrop under reduced motion", async ({ page }) => {
@@ -5920,11 +5920,9 @@ test.describe("expedition scene", () => {
 
     await expedition.getByRole("button", { name: "Launch expedition" }).click();
     await expect(expedition).toContainText("Depth", { timeout: 20_000 });
-    await page.waitForTimeout(400);
-
-    const colours = await canvasColours(page);
-
-    expect(colours["26,26,26"] ?? 0).toBeGreaterThan(0);
+    await expect.poll(async () => (await canvasColours(page))["26,26,26"] ?? 0, {
+      timeout: 20_000,
+    }).toBeGreaterThan(0);
   });
 });
 
