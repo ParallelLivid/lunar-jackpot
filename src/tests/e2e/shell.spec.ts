@@ -5864,7 +5864,7 @@ test.describe("perk tree layout", () => {
 });
 
 test.describe("expedition scene", () => {
-  /** Every distinct colour the scene canvas is painting, with pixel counts. */
+  /** Scene colours below the status text, with pixel counts. */
   const canvasColours = (page: Page) =>
     page.evaluate(() => {
       const canvas = document.querySelector<HTMLCanvasElement>(".expedition-stage canvas");
@@ -5874,7 +5874,14 @@ test.describe("expedition scene", () => {
         return {};
       }
 
-      const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      // The status label is drawn at y=20 in CSS pixels. Its anti-aliased
+      // edges can match backdrop greys on some platforms, so exclude it.
+      const pixelRatio = context.getTransform().d;
+      const top = Math.ceil(32 * pixelRatio);
+      if (canvas.width === 0 || canvas.height <= top) {
+        return {};
+      }
+      const data = context.getImageData(0, top, canvas.width, canvas.height - top).data;
       const counts: Record<string, number> = {};
 
       for (let index = 0; index < data.length; index += 4) {
@@ -5897,6 +5904,7 @@ test.describe("expedition scene", () => {
     const onSurface = await canvasColours(page);
 
     expect(onSurface["26,26,26"] ?? 0).toBe(0);
+    expect(onSurface["43,43,43"] ?? 0).toBe(0);
 
     await expedition.getByRole("button", { name: "Launch expedition" }).click();
     await expect(expedition).toContainText("Depth", { timeout: 20_000 });
