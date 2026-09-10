@@ -1,0 +1,212 @@
+{
+  "saveVersion": 3,
+  "contentVersion": "0.1.0",
+  "revision": 9,
+  "savedAtUnixMs": 1700000000000,
+  "game": {
+    "resources": {
+      "cash": 777000,
+      "chips": 4200,
+      "relics": 9,
+      "components": 0,
+      "keys": 0,
+      "caches": 0,
+      "selenite": 0
+    },
+    "casino": {
+      "selectedMachineId": "machine.alpha",
+      "machines": {
+        "machine.alpha": {
+          "unlocked": true,
+          "level": 1,
+          "recipePieces": 0,
+          "researchedNodeIds": [],
+          "activeSpecId": null,
+          "cycleProgressMs": 0
+        },
+        "machine.beta": {
+          "unlocked": false,
+          "level": 1,
+          "recipePieces": 0,
+          "researchedNodeIds": [],
+          "activeSpecId": null,
+          "cycleProgressMs": 0
+        },
+        "machine.gamma": {
+          "unlocked": false,
+          "level": 1,
+          "recipePieces": 0,
+          "researchedNodeIds": [],
+          "activeSpecId": null,
+          "cycleProgressMs": 0
+        }
+      }
+    },
+    "gear": {
+      "tankLevel": 1,
+      "pickaxeLevel": 1,
+      "tankTrinketSlots": [
+        null,
+        null,
+        null
+      ],
+      "pickaxeTrinketSlots": [
+        null,
+        null,
+        null
+      ]
+    },
+    "collection": {
+      "trinkets": {
+        "trinket.bladder": {
+          "owned": false,
+          "tier": 1,
+          "fragments": 0
+        },
+        "trinket.regulator": {
+          "owned": false,
+          "tier": 1,
+          "fragments": 0
+        },
+        "trinket.tungsten-head": {
+          "owned": false,
+          "tier": 1,
+          "fragments": 0
+        },
+        "trinket.ore-sieve": {
+          "owned": false,
+          "tier": 1,
+          "fragments": 0
+        }
+      },
+      "totems": {
+        "totem.prospector": {
+          "owned": false,
+          "rank": 0,
+          "fragments": 0
+        },
+        "totem.magpie": {
+          "owned": false,
+          "rank": 0,
+          "fragments": 0
+        },
+        "totem.gambler": {
+          "owned": false,
+          "rank": 0,
+          "fragments": 0
+        },
+        "totem.anchor": {
+          "owned": false,
+          "rank": 0,
+          "fragments": 0
+        }
+      },
+      "activeTotemIds": [
+        null,
+        null,
+        null
+      ]
+    },
+    "expedition": {
+      "status": "surface",
+      "runId": null,
+      "seed": null,
+      "rngStreams": null,
+      "depth": 0,
+      "oxygen": 0,
+      "maxOxygenSnapshot": 0,
+      "pickaxeDamageSnapshot": 0,
+      "modifierSnapshot": null,
+      "currentEncounter": null,
+      "runInventory": {
+        "ore": {
+          "dust": 0,
+          "seam": 0,
+          "core": 0
+        },
+        "components": 0,
+        "relics": 0,
+        "recipePieces": {
+          "machine.alpha": 0,
+          "machine.beta": 0,
+          "machine.gamma": 0
+        },
+        "caches": 0
+      },
+      "history": [],
+      "committedFailureResult": null,
+      "transitionRemainingMs": 0
+    },
+    "gambling": {
+      "selectedWager": 10,
+      "committedSpin": null,
+      "recentResults": []
+    },
+    "random": {
+      "gambling": {
+        "a": 3909972026,
+        "b": 1041775702,
+        "c": 2225834633,
+        "d": 3814160485,
+        "draws": 12
+      },
+      "cacheRewards": {
+        "a": 190201450,
+        "b": 3173860730,
+        "c": 2594295758,
+        "d": 3588155131,
+        "draws": 12
+      },
+      "expeditionSeeds": {
+        "a": 1338662955,
+        "b": 2406694576,
+        "c": 3038452990,
+        "d": 1150643846,
+        "draws": 12
+      },
+      "nextExpeditionSeedCounter": 0
+    },
+    "prestige": {
+      "count": 2,
+      "lifetimeCashEarned": 2000000,
+      "cycleCashEarned": 0,
+      "purchasedPerkIds": []
+    },
+    "pity": {
+      "encountersSinceRecipePiece": 0,
+      "encountersSinceRelic": 0
+    },
+    "statistics": {
+      "playTimeMs": 0,
+      "cashEarned": 0,
+      "chipsEarned": 0,
+      "runsLaunched": 0,
+      "runsReturned": 0,
+      "runsFailed": 0,
+      "encountersCompleted": 0,
+      "oreBanked": 0,
+      "spinsPlayed": 0,
+      "chipsWagered": 0,
+      "chipsWon": 0,
+      "cachesOpened": 0
+    },
+    "onboarding": {
+      "dismissedCalloutIds": [],
+      "hasPurchasedMachineLevel": false,
+      "hasLaunchedExpedition": false,
+      "hasBankedRun": false
+    },
+    "settings": {
+      "masterVolume": 0.7,
+      "musicVolume": 0.4,
+      "sfxVolume": 0.8,
+      "muted": false,
+      "machineSounds": true,
+      "reducedMotion": false,
+      "screenShake": true,
+      "numberFormat": "compact"
+    },
+    "lastSettledAtUnixMs": 1700000000000
+  },
+  "checksum": "94eb9ca9"
+}

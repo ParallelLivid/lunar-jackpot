@@ -1,0 +1,3965 @@
+:root {
+  --ink: #f5f5f5;
+  --ink-dim: #a8a8a8;
+  --ink-faint: #6e6e6e;
+  --rule: #585858;
+  --surface: #0a0a0a;
+  --surface-raised: #131313;
+  --backdrop: #050505;
+  --warning: #ffffff;
+
+  color: var(--ink);
+  background: var(--backdrop);
+  font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+input[type="range"],
+input[type="checkbox"] {
+  accent-color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+/*
+ * The dashboard fills the viewport exactly and each panel scrolls its own body,
+ * so the resource bar never leaves the screen during ordinary play.
+ */
+.game-shell {
+  display: grid;
+  grid-template-columns: minmax(28rem, 2fr) minmax(20rem, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1.14fr) minmax(0, 0.86fr);
+  /*
+   * Three rows, and the casino floor and the litterbox share one of them.
+   *
+   * They used to be two rows — the litterbox's `auto` and the casino's fraction
+   * — with the machine panel spanning both. That is what made the machine panel
+   * exactly one row-gap taller than the casino floor whenever there was no cat
+   * to show: a collapsed row is zero pixels, but a grid still puts its gap
+   * either side of it, so `machines` spanned `casino + 12 + 0` against the
+   * floor's `casino`. Measured at 1440x900: 404.5px against 392.5px, at every
+   * viewport, which is playtest #9's second note.
+   *
+   * One area makes that impossible rather than merely fixed. The machine panel
+   * and `.casino-column` are two cells of the same row now, so they are the same
+   * height by construction, cats or no cats, with no conditional template and no
+   * row that has to collapse cleanly.
+   *
+   * It also confines the litterbox to the casino column. It used to take its
+   * height off the top of the whole dashboard, so a shelf of cats shrank the
+   * expedition panel as well as the floor — the "pushes casino floor and Launch
+   * Expedition windows" half of the third note. Now it can only take space from
+   * the floor beside it, and chunk 3 stops it taking that.
+   */
+  grid-template-areas:
+    "topbar     topbar     rail"
+    "casino     machines   rail"
+    "expedition expedition rail";
+  gap: 0.75rem;
+  /*
+   * The dashboard fills the viewport, but never squeezes below the height at
+   * which panels stop being usable. Shorter viewports scroll the page instead.
+   */
+  block-size: max(100vh, 42rem);
+  padding: 0.75rem;
+}
+
+.game-shell[data-read-only="true"] .panel:not(.panel--settings) {
+  border-style: dashed;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+}
+
+.panel__header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--rule);
+}
+
+.panel__heading {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/*
+ * A heading that is also a button.
+ *
+ * Styled as the heading it replaces rather than as a control: the player's own
+ * name for the place is the thing to read, and it happening to be clickable is
+ * secondary. The underline appears on hover and focus, which is where an
+ * affordance is needed and where it costs nothing to read the rest of the time.
+ */
+.panel__heading-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.panel__heading-button:hover,
+.panel__heading-button:focus-visible {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+}
+
+/* The naming dialogue borrows the tutorial notice's frame; this is the field. */
+.casino-name__field {
+  display: block;
+  margin-block: 0.6rem;
+}
+
+.casino-name__field input {
+  inline-size: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.panel__actions,
+.panel__status {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding-inline-end: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.panel__body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow: auto;
+}
+
+/*
+ * A body whose contents are scaled to fit rather than scrolled.
+ *
+ * `overflow: hidden` because there is nothing to scroll to once the contents
+ * have been made to fit — and because the measurement wants a stable box.
+ */
+.panel__body--fit {
+  overflow: hidden;
+  /*
+   * No padding on the measured box.
+   *
+   * `clientHeight` includes padding, so a padded container reports 24px more
+   * space than its content box actually has — and the fit happily used it,
+   * leaving the bottom row of the casino floor hanging 11px below the panel.
+   * The padding moves inside, where it is scaled along with everything else and
+   * the measurement is exact by construction.
+   */
+  padding: 0;
+}
+
+/*
+ * The scaled box. Width only: the height must stay `auto`, or `scrollHeight`
+ * would report the box we forced rather than the height the content wants, and
+ * the measurement in `useFitScale` depends on it being the latter.
+ */
+/*
+ * The scaled box.
+ *
+ * A uniform scale, and **no width compensation.** An earlier version widened the
+ * box by the reciprocal of the scale so the content would reflow into the extra
+ * room and need less shrinking — which worked, and quietly defeated every
+ * width-driven layout in the game. The perk tree's `auto-fit` collapse is the
+ * clearest case: at a 560px window it stayed in three columns and scaled them
+ * down, instead of stacking into one readable one, because the compensated box
+ * told it there was room for three.
+ *
+ * Measured, the compensation was worth 0.69 against 0.58 on the casino floor and
+ * nothing at all anywhere else. That is not worth breaking every breakpoint for.
+ */
+.panel__fit {
+  transform: scale(var(--fit-scale, 1));
+  transform-origin: top left;
+  /* The padding its container gave up, so the measured box is the content box. */
+  padding: 0.75rem;
+}
+
+/*
+ * A fitted box that fills the box it is fitted to.
+ *
+ * `.panel__fit` scales uniformly from its top-left corner, so a panel settled at
+ * 0.79 draws its contents at 79% of the panel's width and leaves the other 21%
+ * blank down the right-hand edge. Measured at 1440x900 on a maxed save: 154px of
+ * it in the casino floor and 276px in the expedition panel, which is what
+ * playtest #9's first note is looking at when it asks for the launch button to
+ * be anchored to the right of the box.
+ *
+ * Laying the content out at `100% / scale` and drawing it at `scale` puts the
+ * two back in agreement: the box is wider than the panel by exactly the factor
+ * it is about to be shrunk by, so what lands on screen is the panel's full
+ * width. The hook writes `--fit-scale` and this reads it; nothing else changes.
+ *
+ * **Opt-in, and it has to be.** `useFitScale`'s own history records a global
+ * version of this being reverted for defeating every width-driven layout in the
+ * game: a box laid out at `available / 0.65` is half again wider than it looks,
+ * so an `auto-fit` grid holds three columns where two would be legible. That
+ * objection is real, and it is about layouts whose column count is decided by
+ * width. The two boxes this is on state their columns outright — the casino
+ * floor is `repeat(5, ...)` and the expedition is two named columns — so there
+ * is no breakpoint here to defeat.
+ */
+.panel__fit--fill {
+  inline-size: calc(100% / var(--fit-scale, 1));
+}
+
+/*
+ * The floor was reached and it still does not fit, so the scrollbar comes back.
+ * Content the player cannot reach is worse than content they scroll to.
+ */
+.panel__body--overflowing {
+  overflow-y: auto;
+}
+
+/*
+ * The resource strip sizes to its contents and the log takes whatever is left,
+ * which is what "neatly form to the number of resources" asks for without
+ * hard-coding a width.
+ */
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  gap: 0.75rem;
+  min-block-size: 0;
+}
+
+.panel--resources {
+  flex: 0 0 auto;
+}
+
+/*
+ * The log fills the row the resource bar defines, and cannot grow it.
+ *
+ * A fixed cap was the first attempt, but any value larger than the resource bar
+ * still let a full history push the rows below down — 51px of it at 1440x900,
+ * which was enough to make the machine panel scroll. Taking the log out of flow
+ * inside a relatively positioned wrapper means it contributes no height at all:
+ * the resource bar sizes the row, and the log stretches to match whatever that
+ * turns out to be, with no magic number to drift.
+ *
+ * Newest entries are prepended, so the newest line sits at scroll position 0 and
+ * stays visible with no scroll handling of any kind.
+ */
+.topbar__log {
+  position: relative;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.topbar__log > .panel--log {
+  position: absolute;
+  inset: 0;
+}
+
+.panel--log .panel__body {
+  overscroll-behavior: contain;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.log-entry {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.log-entry__time {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-entry__text {
+  color: var(--ink-dim);
+}
+
+.log-entry--positive .log-entry__text {
+  color: var(--ink);
+}
+
+.log-entry--negative .log-entry__text {
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+.log-entry__count {
+  color: var(--ink-faint);
+}
+
+/*
+ * The Company store, in columns.
+ *
+ * `auto-fit` with a `minmax` floor rather than a media query, the same way the
+ * perk tree collapses: the store falls back to a single column when the frame
+ * cannot hold two, so a narrow viewport degrades to the old stacked layout
+ * instead of breaking. 17rem is where a cache offer's Buy button and its price
+ * still share a line.
+ */
+.store-columns {
+  display: grid;
+  /*
+   * The track floor is stated in *drawn* pixels, not laid-out ones.
+   *
+   * This window fills its frame (`.panel__fit--fill`), which lays the content
+   * out at `100% / scale` — so an `auto-fit` floor of a plain 14rem is measured
+   * against a box wider than the one the player sees, and the columns stop
+   * collapsing when they should. Measured at a 560px viewport: three 225px
+   * tracks drawn at 164px each, where two would have been legible.
+   *
+   * Dividing the floor by the same scale puts the question back into the space
+   * the answer is seen in: at scale 1 it is 14rem exactly, and at 0.73 it is the
+   * 19.2rem that draws as 14rem. This is the general fix for `auto-fit` under
+   * compensation, and it is why the perk tree — which has no such floor — cannot
+   * have the fill.
+   */
+  grid-template-columns: repeat(auto-fit, minmax(calc(14rem / var(--fit-scale, 1)), 1fr));
+  gap: 0 0.9rem;
+  align-items: start;
+}
+
+/*
+ * 14rem rather than the 17rem two columns wanted.
+ *
+ * Three columns at 17rem ask for 51rem before the gaps, which the store's frame
+ * does not have — so `auto-fit` would have quietly gone on giving two, and the
+ * rearrangement would have shown as nothing at all. 14rem is where a cache
+ * offer's Buy button and its price still share a line, which is the same test
+ * the old floor was picked by.
+ */
+.store-column {
+  min-inline-size: 0;
+}
+
+/*
+ * The caches and the two bands that serve them, as one block beside supplies.
+ *
+ * Playtest #12, note 3. The bands used to be a full-width strip under all three
+ * columns, which put them under the supplies list — 570px tall against the
+ * caches' 263px — and left 306px of empty canvas under the caches themselves.
+ *
+ * `span 2` is the whole trick. The outer grid still auto-fits 14rem tracks, so
+ * at the store's usual width it lays out three of them and this block takes the
+ * second and third: supplies keeps one track, the block gets two, and the inner
+ * `auto-fit` then finds room for exactly the two cache columns inside it.
+ *
+ * **What it costs, stated because it is real.** When the frame is too narrow for
+ * three tracks the block cannot fit beside supplies and wraps to its own row,
+ * which leaves the track beside the supplies list empty — measured at a 560px
+ * viewport: two 248px tracks, supplies alone on the first row, the block on the
+ * second. Nothing overflows and nothing is squeezed, and the widths this game
+ * targets all give three tracks, so this is a preview-pane width rather than a
+ * window. The alternatives were worse: a proportional `1fr 2fr` keeps the widths
+ * and loses the collapse, an explicit two-track template with real floors
+ * overflows below 686px, and a media query measures the wrong box entirely under
+ * the fill — see the note on the floor above.
+ */
+.store-cache-block {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(14rem / var(--fit-scale, 1)), 1fr));
+  gap: 0 0.9rem;
+  align-items: start;
+  min-inline-size: 0;
+}
+
+/*
+ * A band belongs to both caches, so it spans however many columns the block
+ * ended up with.
+ *
+ * `1 / -1` rather than `span 2`: when the block collapses to a single column the
+ * bands must span one, and `-1` is the only way to say "whatever the last line
+ * is" without knowing.
+ */
+.store-band {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+  margin-block-start: 0.6rem;
+  padding-block-start: 0.4rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+/*
+ * The band's own rule is the only one it needs. `.store-row` carries a bottom
+ * border to separate consecutive offers in a column, and a band holds one row,
+ * so that border would land immediately above the band's own top rule with a
+ * few pixels between them.
+ */
+.store-band .store-row {
+  border-block-end: 0;
+}
+
+/*
+ * No top padding on the row inside a band: the band already supplies it, and
+ * `.store-row`'s own `padding-block` would double it.
+ */
+.store-band > .store-row {
+  padding-block-start: 0;
+}
+
+/*
+ * A price under what it buys, on the button itself.
+ *
+ * The store's quantity ladder read `x1 x10 Max (14)` with the cost only in a
+ * paragraph underneath and in the `aria-label` — playtest #11, note 10: "the
+ * prices for each item are not clear enough (esp with chip cost)". Two stacked
+ * lines rather than one long label, because three buttons of "x10 — 500 chips"
+ * on one row is wider than any column this window has.
+ *
+ * **Keyed off one class now, rather than off where the button happens to sit.**
+ * Playtest #12, note 9 took this shape to every button in the game that spends
+ * something, and the old selectors named two places inside the store. A
+ * structural selector also breaks silently when the markup around a button
+ * changes — which it did one chunk earlier: wrapping the cache button in
+ * `.cache-offer` stopped `.store-column > .action` matching it, and nothing
+ * would have said so.
+ *
+ * **Doubled class for specificity, not for emphasis.** `.action` is declared
+ * several hundred lines below this and sets `padding`, so a single-class rule
+ * up here loses the cascade to it and the tighter block padding below silently
+ * did nothing. Measured: the button stayed 42px with `padding-block: 0.25rem`
+ * apparently set.
+ */
+.action.action--priced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: center;
+  line-height: 1.2;
+  /*
+   * Tighter above and below than a one-line button.
+   *
+   * `.action`'s 0.35rem is sized for a single line of text; on a two-line
+   * control the same padding reads as twice as much air, and it is paid on every
+   * priced button in the game. 0.25rem keeps the tap target comfortable and
+   * takes 3px off each one — which is what brought the prestige window's perk
+   * tree back inside the overflow budget its own test sets, rather than that
+   * budget being widened to fit.
+   */
+  padding-block: 0.25rem;
+}
+
+/*
+ * The cash price and its restock, side by side — playtest #12, note 8.
+ *
+ * Two jobs in one rule. The margin is the space the note asks for: `.store-row`
+ * ends in a border, and the button that spends money began at exactly that
+ * border's pixel with nothing between the description and the purchase. The
+ * margin goes here rather than on `.store-row`, because that row is also the
+ * keys block and every supply tile, none of which want a different bottom.
+ *
+ * The flex is the second half: the restock line was a full-width paragraph under
+ * a 71px button, and it now sits in the empty column that was already beside it.
+ *
+ * `wrap` is a safety valve rather than a case that happens. `.store-column`'s
+ * track floor is 14rem, and 224px minus an 83px button still leaves a legible
+ * remainder — measured at a 560px viewport, the store falls to two 248px tracks
+ * and the sentence stays on the button's line, wrapping within itself. The rule
+ * is here for a future narrower floor, and nothing tests it because nothing
+ * reaches it.
+ */
+.cache-offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-block-start: 0.55rem;
+}
+
+/*
+ * `flex: 1` rather than an intrinsic width, so the line takes what the button
+ * leaves and wraps within it. The two cache columns price differently — 500 cash
+ * against 2.50K — so their buttons are different widths, and a fixed size here
+ * would leave one column's sentence short and the other's clipped.
+ */
+.cache-offer__restock {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+}
+
+.action__cost {
+  font-size: 0.66rem;
+  color: var(--ink-dim);
+}
+
+/* Dimmer still when the button cannot be pressed, so the price does not read as
+   the brightest thing on a disabled control. */
+.action:disabled .action__cost {
+  color: inherit;
+}
+
+.store-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding-block: 0.5rem;
+  border-block-end: 1px solid var(--rule);
+}
+
+/*
+ * No rule under the last row of a column.
+ *
+ * In one column the border separated consecutive offers and the final one fell
+ * at the end of the list, where it read as a divider before the next section.
+ * Side by side there is no next section — it reads as a line trailing off the
+ * bottom of a column, and the two columns are different lengths, so it lands in
+ * two different places.
+ */
+.store-row:last-child {
+  border-block-end: 0;
+}
+
+.store-row__body {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/*
+ * The standing order sits under the keys in the same column, so it is headed
+ * like a row rather than like a section — `h5` beneath the column's `h4`.
+ */
+.store-row__body > .subheading {
+  margin-block-end: 0.4rem;
+}
+
+/*
+ * The floor and the litterbox, in one grid cell.
+ *
+ * The floor takes what is left after the shelf rather than a share of the
+ * dashboard, which is the same arrangement the two had before — one level down,
+ * where the litterbox can no longer reach the expedition panel.
+ */
+.casino-column {
+  grid-area: casino;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-block-size: 0;
+}
+
+.panel--casino {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/*
+ * The machines centre in whatever room the floor has.
+ *
+ * There is rarely any to spare — the litterbox is sized to take the leftover —
+ * but the leftover is a whole number of cat rows, so up to 27px of remainder can
+ * be left over from that, and "if perfect alignment is not possible, the
+ * machines should center in the box" is what the note asks for it.
+ *
+ * `safe center` rather than `center`, and the `safe` is the whole rule. The fit
+ * box keeps its *natural* height in layout and is drawn scaled from its top-left
+ * corner, so once the floor is scaling — the content being taller than the box —
+ * plain centring would push the top of the first row of machines above the panel
+ * and clip it. `safe` falls back to `start` in exactly that case, which is where
+ * the content has to be for the scale to draw it inside the box.
+ *
+ * (The flex column here predates this: it was how the cat strip sat at the
+ * bottom of the floor, before the litterbox became a panel of its own.)
+ */
+.panel--casino .panel__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+.panel--machines {
+  grid-area: machines;
+}
+
+.panel--expedition {
+  grid-area: expedition;
+}
+
+/* ------------------------------------------------------- rail and windows */
+
+.window-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/*
+ * The developer-edit mark, pinned to the bottom of the rail.
+ *
+ * `margin-block-start: auto` rather than absolute positioning, so it sits under
+ * the buttons at any rail height and moves with them when the rail becomes a
+ * wrapping row on a narrow screen.
+ *
+ * The bottom margin clears `.dev-panel`, which is fixed to the same corner in a
+ * development build — and a development build is exactly when somebody is using
+ * the menu this marks, so the two would have collided every time it mattered.
+ */
+.window-rail__mark {
+  margin: auto 0 2.25rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+/*
+ * The rail squeezes before it overflows.
+ *
+ * It was a fixed 0.5rem gap and a fixed button padding, which was fine at nine
+ * entries. Playtest #8 added a tenth (Skins) and the column grew past the
+ * bottom of a 720p viewport — where `.dev-panel` is fixed to the same corner, so
+ * the last button became unclickable rather than merely cramped. Four e2e tests
+ * failed on exactly that: the diagnostics aside intercepting a click on
+ * Statistics.
+ *
+ * `clamp` against viewport height gives the gap and the padding back first, so
+ * a short screen tightens the rail instead of pushing a button off it. A help
+ * tab is still promised, which will make it eleven.
+ */
+.window-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.15rem, 0.55vh, 0.5rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail-button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+  inline-size: 5.5rem;
+  padding: clamp(0.15rem, 0.45vh, 0.4rem) 0.25rem;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+}
+
+.rail-button:hover {
+  background: var(--surface-raised);
+}
+
+.rail-button--open {
+  border-color: var(--ink);
+  border-width: 2px;
+  padding: calc(clamp(0.15rem, 0.45vh, 0.4rem) - 1px) calc(0.25rem - 1px);
+}
+
+.rail-button__label {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+/*
+ * The rail icon shrinks with the viewport, because the rail has to fit.
+ *
+ * The gap and the padding above already clamp against `vh` for this reason; the
+ * sprite did not, and it is by far the largest part of a button — 36px of a
+ * 58px row. That was fine at ten entries and stopped being fine at twelve: the
+ * jukebox and the help window took the list to 767px inside a 696px rail at
+ * 1280x720, which pushed Statistics off the bottom of the screen and underneath
+ * the fixed diagnostics panel, where it could not be clicked at all.
+ *
+ * Sized in CSS rather than by lowering `scale`, so a tall screen keeps the
+ * 36px icon it has today and only a short one pays. `PixelSprite` draws an SVG
+ * with a `viewBox`, so this scales the vector rather than resampling a bitmap
+ * and `shapeRendering="crispEdges"` still applies — the integer-scaling rule
+ * exists for raster art and there is none here.
+ *
+ * 3.8vh is 34px at 900 and 27px at 720, where twelve buttons come to 641px in a
+ * 696px rail — about 55px of margin, which is the room the next entry will need.
+ * The 1.25rem floor holds the icon at 20px on anything shorter.
+ */
+.window-rail .pixel-sprite {
+  inline-size: clamp(1.25rem, 3.8vh, 2.25rem);
+  block-size: auto;
+}
+
+/* A ring rather than a colour, so the cue survives a monochrome display. */
+.rail-button__dot {
+  position: absolute;
+  inset-block-start: 0.2rem;
+  inset-inline-end: 0.2rem;
+  inline-size: 8px;
+  block-size: 8px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+/*
+ * "Something is running in here", as opposed to the ring's "something is waiting
+ * for you". A filled square against a hollow circle, because this palette has
+ * one ink and two markers that differed only in colour would be one marker.
+ */
+.rail-button__dot--busy {
+  border-radius: 0;
+  background: var(--ink);
+}
+
+.window-layer {
+  position: fixed;
+  inset-block: 0.75rem;
+  inset-inline-end: 7.25rem;
+  display: flex;
+  /*
+   * Windows anchor to the top, beside the rail button that opened them, so the
+   * expedition controls at the bottom of the dashboard stay clear during a run.
+   */
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+
+/*
+ * A window, not a modal: no backdrop, and the dashboard behind stays live. Only
+ * the windows themselves take pointer events.
+ */
+.window {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(24rem, 34vw);
+  max-block-size: 100%;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--backdrop);
+  /* The window layer ignores pointer events; its children take them back. */
+  pointer-events: auto;
+}
+
+/*
+ * Wide enough for three perk columns at 13rem apiece plus their gaps, and never
+ * wider than the space beside the rail. Below that it narrows and the grid
+ * collapses on its own.
+ *
+ * Width only — everything else a window needs stays on `.window`, so a variant
+ * can never quietly cost a window its frame or its ability to be clicked.
+ */
+.window--wide {
+  inline-size: min(46rem, calc(100vw - 9rem));
+}
+
+/*
+ * Wider still, for the store's three columns.
+ *
+ * 58rem is three 14rem columns with their gaps and the window's own padding,
+ * plus the room a cache offer needs before its Buy button and its price stop
+ * sharing a line. `calc(100vw - 9rem)` is the same clamp `--wide` uses: never
+ * wider than the space beside the rail, so a narrow screen falls back to fewer
+ * columns rather than to a window hanging off the edge.
+ */
+.window--widest {
+  inline-size: min(58rem, calc(100vw - 9rem));
+}
+
+.window__header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  border-block-end: 1px solid var(--rule);
+}
+
+.window__title {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.window__actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding-inline-end: 0.4rem;
+}
+
+.window__close {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.window__close:hover {
+  background: var(--surface-raised);
+}
+
+.window__body {
+  flex: 1;
+  min-block-size: 0;
+  padding: 0.7rem;
+  overflow: auto;
+}
+
+/* Scaled to fit, like a panel body. See `.panel__body--fit`. */
+.window__body--fit {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* A window's own padding, which is tighter than a panel's. */
+.window__body--fit > .panel__fit {
+  padding: 0.7rem;
+}
+
+/* Could not be fitted legibly, so it keeps its size and its scrollbar. */
+.window__body--overflowing {
+  overflow-y: auto;
+}
+
+.window-panel__status {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+}
+
+/* -------------------------------------------------------------- primitives */
+
+.subheading {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.description {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+/*
+ * The cat line, during the three seconds the run holds still for it.
+ *
+ * Full ink rather than the dim grey every other description uses: this is the
+ * rarest event in the game, and for those three seconds it is the only thing the
+ * encounter card has to say.
+ */
+.description--cat {
+  color: var(--ink);
+}
+
+.panel-section {
+  margin-block-start: 0.9rem;
+  padding-block-start: 0.7rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.action {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+
+.action:disabled {
+  border-color: var(--rule);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.action[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--backdrop);
+}
+
+.action--primary {
+  border-width: 2px;
+  font-weight: 700;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 0.4rem;
+}
+
+/*
+ * The quantity ladder in the store: x1, x10, x100, Max.
+ *
+ * `.bulk-row` had no rule at all, so the buttons were laid out by the default
+ * inline flow and ran together with only a word space between them. Its own
+ * rule rather than reusing `.button-row`, because these are one control divided
+ * into rungs rather than a row of separate actions, and a tighter gap is what
+ * says so.
+ */
+.bulk-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-block: 0.4rem;
+}
+
+.disclosure {
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.stat-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding-block: 0.2rem;
+  font-size: 0.78rem;
+  border-block-end: 1px dotted #2a2a2a;
+}
+
+.stat-row__label {
+  color: var(--ink-dim);
+}
+
+.stat-row__arrow,
+.stat-row__next {
+  color: var(--ink-dim);
+}
+
+.progress {
+  block-size: 6px;
+  margin-block: 0.3rem;
+  border: 1px solid var(--rule);
+  background: var(--backdrop);
+}
+
+.progress__fill {
+  block-size: 100%;
+  background: var(--ink-dim);
+}
+
+.progress--positive .progress__fill {
+  background: var(--ink);
+}
+
+.progress--warning .progress__fill {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--warning) 0 4px,
+    var(--backdrop) 4px 8px
+  );
+}
+
+.disabled-note,
+.empty-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.chip-list {
+  margin: 0.25rem 0;
+  padding-inline-start: 1.1rem;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.4rem;
+  border: 1px solid var(--rule);
+}
+
+.option__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+/*
+ * A name and, where there is one, a rank beside it.
+ *
+ * A flex line rather than a text node with an `inline-flex` after it. The rank
+ * is the part that must not break: it is `nowrap` and cannot give, so in an
+ * unmanaged line the *name* pushed it onto a second row at some column widths
+ * and not others — which is the wrapping playtest #8 reported and suspected was
+ * a window-sizing problem. The `gap` also spaces the two, replacing a margin
+ * that `.rank-pips` had and `.rank-count` did not.
+ */
+.option__name {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+}
+
+/* The name yields first; the rank keeps its line. */
+.option__name-text {
+  min-inline-size: 0;
+}
+
+.option__detail {
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+}
+
+.option__state {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+/* ----------------------------------------------------------------- tutorial */
+
+/*
+ * The tutorial notice, and the backdrop that makes it a modal.
+ *
+ * **It was a panel in the topbar and is now a dialogue in the middle.** The
+ * topbar version had to fit the row the resource bar sizes — about 94px — which
+ * clipped its own body at some viewports and put a hard forty-word ceiling on
+ * the writing. A centred dialogue sizes to its content instead, which is what
+ * lets the script say anything worth reading.
+ *
+ * The backdrop takes pointer events rather than merely dimming: the product
+ * ruling is that the notice must be closed before the dashboard can be touched.
+ * `Window.tsx` does the opposite on purpose and says so; this is the exception.
+ */
+.tutorial-backdrop {
+  position: fixed;
+  z-index: 20;
+  background: rgb(5 5 5 / 72%);
+  inset: 0;
+}
+
+/*
+ * The one window allowed through the backdrop.
+ *
+ * "Read more in the manual" opens Help from inside a notice, and a window that
+ * opens underneath the thing that sent you to it is worse than no link at all.
+ * Lifted only while the tutorial is the one that asked: a window the player
+ * opened before the notice appeared stays sealed behind it, which is the ruling.
+ */
+.game-shell[data-tutorial-help="true"] .window-layer {
+  z-index: 25;
+}
+
+.tutorial-notice {
+  position: fixed;
+  /* Above the backdrop *and* above the highlight the backdrop lets through. */
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  inline-size: min(32rem, calc(100vw - 2rem));
+  max-block-size: calc(100vh - 2rem);
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
+  /*
+   * Tall enough for the writing, and never taller than the window. The scroll is
+   * a last resort for a very short viewport — the word budget in
+   * `content/tutorial.ts` is what keeps it from being reached — but a notice
+   * that cannot show its own buttons would be a trap, and this is a modal.
+   */
+  padding: 0.9rem 1rem;
+  overflow-y: auto;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--backdrop);
+}
+
+.tutorial-notice__meta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+}
+
+/* The department, which is where most of the joke lives. */
+.tutorial-notice__from {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+
+.tutorial-notice__position {
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+.tutorial-notice__title {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.tutorial-notice__body {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.tutorial-notice__more {
+  margin: 0.1rem 0 0;
+}
+
+.tutorial-notice__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.74rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tutorial-notice__link:hover {
+  color: var(--ink-dim);
+}
+
+/* What the notice is waiting for, said once and in full strength. */
+.tutorial-notice__hint {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px dashed var(--ink);
+  font-size: 0.76rem;
+  color: var(--ink);
+}
+
+/*
+ * Skip in one corner, the primary in the other — playtest #12, note 2.
+ *
+ * Both used to be `flex-end`, which put "carry on" and "put this act away" 9px
+ * apart in the same corner with 376px of the row empty beside them. Measured at
+ * 1440x900: Next ended at x=900, Skip began at x=909.
+ */
+.tutorial-notice__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  margin-block-start: 0.6rem;
+}
+
+/*
+ * `margin-inline-start: auto` rather than `space-between` on the row.
+ *
+ * The row often holds only the primary — every last reading card drops its Skip
+ * — and `space-between` puts a lone child on the *left*, which is the wrong
+ * corner and the common case. Pushing the primary right works with one child and
+ * with two.
+ */
+.tutorial-notice__actions .action--primary {
+  margin-inline-start: auto;
+}
+
+/*
+ * What the notice is pointing at, still marked behind the backdrop.
+ *
+ * `outline` rather than `border`: a border changes the element's box and would
+ * reflow the panel it is on, which on a fit-scaled panel means the highlight
+ * resizes the thing it is highlighting.
+ */
+.is-tutorial-target {
+  position: relative;
+  /*
+   * Above the dimming so the player can see what is being pointed at, and
+   * **inert**, because lifting it is otherwise a hole straight through the
+   * modal: the first version raised the casino panel over the backdrop and its
+   * machine tiles then swallowed clicks aimed at the notice's own buttons.
+   *
+   * Only ever set while a notice is open, when the dashboard is sealed anyway,
+   * and removed with the notice.
+   */
+  z-index: 21;
+  outline: 2px dashed var(--ink);
+  outline-offset: 2px;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------- help */
+
+/*
+ * A topic list beside one topic. The nav keeps its width; the body takes the
+ * rest and divides it into columns.
+ */
+.help-window {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.help-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  border-inline-end: 1px solid var(--rule);
+  list-style: none;
+}
+
+/*
+ * Seventeen rows, and the row height is what decides whether this window fits.
+ *
+ * The nav is the tallest thing in the frame — far taller than any topic's prose
+ * — so its per-row height, not the length budget, is the binding constraint on
+ * the no-scrollbars requirement. Measured at 1024x700 with a 2x sprite on every
+ * row: 618px of nav in a 640px body, which overflowed. Text-only rows come to
+ * about 470px and leave the frame room to breathe.
+ */
+.help-tab {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  inline-size: 100%;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.help-tab:hover {
+  background: var(--surface-raised);
+}
+
+/*
+ * The open topic is marked by border, background *and* full-strength text.
+ * A tab strip has no other affordance saying which panel you are reading, and
+ * one cue that happens to be a colour is exactly what this palette forbids.
+ */
+.help-tab--open {
+  border-color: var(--ink);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.help-tab__label {
+  min-inline-size: 0;
+}
+
+.help-panel {
+  min-inline-size: 0;
+}
+
+.help-heading {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.help-summary {
+  margin-block-end: 0.6rem;
+}
+
+/*
+ * The recommendation's body reads at full strength, not as a summary line.
+ *
+ * It is the only prose on its pane rather than the opening line above a list of
+ * entries, and playtest #11 moved it here from a dashboard strip where it was
+ * the brightest thing in the row. Dimming it to `--ink-dim` in the manual would
+ * make the one sentence the player came for the quietest one on screen.
+ */
+.help-panel[data-topic="help.next-action"] .help-summary {
+  max-inline-size: 40rem;
+  color: var(--ink);
+}
+
+.help-next-action__more {
+  margin-block: 0 0.6rem;
+}
+
+/*
+ * The body flows into columns rather than scrolling.
+ *
+ * This is the whole no-scrollbars answer, and it is playtest #10's fix for the
+ * Buffs sheet applied to prose: a column flow is roughly `1/n` the height of the
+ * same content in one column, which is what keeps a topic inside the frame
+ * instead of past its floor.
+ *
+ * The width is stated in *drawn* pixels — `calc(… / var(--fit-scale))` — for the
+ * reason `.stat-sheet-groups` gives: this window fills its frame, so the content
+ * box is laid out at `100% / scale` and a plain `16rem` would be measured
+ * against a box wider than the one on screen, handing out more columns than the
+ * player can actually read. The `3` caps the count; the width is what drops it
+ * to two and then one as the frame narrows.
+ */
+.help-body {
+  columns: calc(16rem / var(--fit-scale, 1)) 3;
+  column-gap: 1rem;
+  margin: 0;
+}
+
+/*
+ * `break-inside: avoid` for the same reason the stat sheet needs it: without it
+ * the balancer will end a column between a term and its body, which reads as two
+ * unrelated fragments rather than one entry.
+ *
+ * Separation is an end margin, not a row gap — a column flow has no row gap, and
+ * a start margin on the first entry of a column is collapsed by some engines and
+ * kept by others.
+ */
+.help-entry {
+  break-inside: avoid;
+  margin-block-end: 0.7rem;
+}
+
+.help-entry__term {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/*
+ * The two tutorial controls, at the foot of the recommendation pane.
+ *
+ * A flex row rather than the bare paragraph this was — playtest #14, note 8.
+ * JSX strips the whitespace between two elements separated by a newline, so
+ * there was no text node between the buttons and no box-model gap either: they
+ * measured exactly 0px apart, with their two 1px borders sharing an edge and
+ * reading as one control with a line through it. The gap matches `.button-row`,
+ * which is what every other pair of buttons in the game uses.
+ */
+.help-replay {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+}
+
+
+.help-entry__body {
+  margin: 0.15rem 0 0;
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ jukebox */
+
+/*
+ * The jukebox is the game's only radio group, so its row styling lives here
+ * rather than in `.option`, which every other list uses for rows that carry a
+ * button instead of a control.
+ */
+.jukebox-option {
+  display: flex;
+  flex: 1;
+  gap: 0.5rem;
+  align-items: center;
+  min-inline-size: 0;
+  cursor: pointer;
+}
+
+/*
+ * The selected row is marked by its border as well as by the radio.
+ *
+ * A native radio at this type size is a small mark in a long list, and the rule
+ * this palette is built on is that state is never carried by one cue alone. The
+ * border is the same `--ink` the pressed button uses, so "this one is on" looks
+ * the same here as it does everywhere else.
+ */
+.option:has(input[type="radio"]:checked) {
+  border-color: var(--ink);
+}
+
+.pixel-sprite {
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* ---------------------------------------------------------------- resources */
+
+.resource-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resource {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--rule);
+}
+
+.resource__glyph {
+  display: grid;
+  place-items: center;
+  inline-size: 1.4rem;
+  block-size: 1.4rem;
+  border: 1px solid var(--ink);
+  font-size: 0.75rem;
+}
+
+.resource__body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.resource__name {
+  font-size: 0.65rem;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resource__value {
+  font-size: 0.95rem;
+}
+
+.resource-rate {
+  font-size: 0.75rem;
+}
+
+/* ------------------------------------------------------------------- casino */
+
+/*
+ * Ten machines in two rows of five. Stated directly rather than left to
+ * `auto-fill`, which produced the right answer only because the panel happened
+ * to be the right width — a layout that reflows into three rows the moment the
+ * column widths change is not the same thing as a 2x5 floor.
+ */
+.machine-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.machine-tile {
+  padding: 0.4rem;
+  border: 1px solid var(--rule);
+}
+
+.machine-tile--selected {
+  border-color: var(--ink);
+  border-width: 2px;
+  padding: calc(0.4rem - 1px);
+}
+
+.machine-tile--locked {
+  border-style: dashed;
+}
+
+/*
+ * Pinned to the bottom of the floor, below the machines. `margin-block-start:
+ * auto` keeps it there whatever the grid does, and the strip never wraps — the
+ * overflow count is what absorbs a long collection.
+ */
+/* ------------------------------------------------------------ perk tree */
+
+/*
+ * The three branches sit side by side. `auto-fit` with a `minmax` floor does the
+ * collapsing without a media query: the columns fall to two, then one, as the
+ * frame narrows, so the layout answers to the space it actually has rather than
+ * to a guess about the viewport.
+ */
+.perk-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0 0.9rem;
+  align-items: start;
+}
+
+.perk-branch {
+  margin-block-start: 0.75rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--rule);
+  min-inline-size: 0;
+}
+
+/* The shared root spans the full width above the three columns. */
+.perk-branch--root {
+  margin-block-end: 0.25rem;
+}
+
+/*
+ * The root's cards sit side by side.
+ *
+ * It holds two once the capstone appears — the tree's entry point and its end —
+ * and stacking them would give the widest row in the window to the two shortest
+ * cards in it. Being outside `.perk-columns`, these also miss its
+ * `flex-direction: column` rule, so they keep the horizontal card layout the
+ * bare `.option` default gives them, which at full width is the right one.
+ */
+.perk-branch--root .option-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.4rem;
+}
+
+/*
+ * In a column the perk card stacks rather than putting its price beside the
+ * name: at 13rem a horizontal row would push the button to a width where the
+ * price no longer fits on one line.
+ */
+.perk-columns .option.perk {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.perk-columns .option.perk .action {
+  inline-size: 100%;
+}
+
+.perk-branch__name {
+  margin: 0 0 0.2rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.perk__next {
+  color: var(--ink);
+}
+
+/* Pips rather than "3 / 10": a rank is read at a glance, not calculated. */
+/* What a repeatable perk shows instead of pips: there is no end to fill toward. */
+.rank-count {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * Both rank variants are spaced by `.option__name`'s gap, so a count and a pip
+ * strip sit identically. `.rank-pips` used to carry a 0.4rem margin and
+ * `.rank-count` none, which is why "The long arrangement" ran straight into its
+ * "Rank 100" — the whole of playtest #8's spacing note.
+ */
+.rank-pips {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  vertical-align: middle;
+}
+
+.rank-pip {
+  inline-size: 4px;
+  block-size: 8px;
+  border: 1px solid var(--ink-dim);
+}
+
+.rank-pip--filled {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/*
+ * The cat box.
+ *
+ * It sits under the casino floor inside `.casino-column`, and renders nothing at
+ * all until the first cat is met — which is the majority of every save, cats
+ * being a 1-in-1000 meeting. A flex column with no second child is the same
+ * height as one panel, gap included, so an empty litterbox now costs exactly
+ * nothing where a collapsed grid row still cost a row gap.
+ *
+ * `flex: 0 0 auto`: the shelf takes the height its rows need and the floor above
+ * takes the rest. Chunk 3 is what decides how many rows those are.
+ */
+.panel--cats {
+  flex: 0 0 auto;
+}
+
+/*
+ * A shelf, not a section.
+ *
+ * The litterbox carried a full panel's chrome — a 36px heading and 12px of body
+ * padding all round — around content that can be as little as one 24px row of
+ * sprites. 64px of frame for 24px of cats, and every pixel of it comes off the
+ * casino floor above, which is what "shorten the Litterbox (so that even just 1
+ * row of cats is present)" is asking about. The heading still reads; it is the
+ * padding around a decorative shelf that was never earning its space.
+ */
+.panel--cats .panel__heading {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.panel--cats .panel__actions {
+  padding-inline-end: 0.75rem;
+  font-size: 0.7rem;
+}
+
+.panel--cats .panel__fit {
+  padding: 0.4rem 0.75rem;
+}
+
+.cat-box__shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: flex-end;
+  /*
+   * The cap is written by `CatBox`, from the same row count it renders to.
+   *
+   * It used to be `calc(3 * 24px + 2 * 4px)` here beside a `MAXIMUM_ROWS = 3`
+   * there, with comments on both saying the two had to agree. Three rows was
+   * also wrong at every viewport but one, which is playtest #9's fourth note —
+   * the number is now measured rather than chosen, so it cannot be stated twice.
+   *
+   * `overflow: hidden` stays: a resize between measurements must clip rather
+   * than push the panel open, and the "+n" count is what stands in for the cats
+   * it hides.
+   */
+  overflow: hidden;
+}
+
+.cat-box__cat {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.cat-box__cat:disabled {
+  cursor: default;
+}
+
+.cat-box__count {
+  align-self: center;
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+}
+
+/* ------------------------------------------------------------------ skins */
+
+/*
+ * The wardrobe: the miner's looks beside the cats'.
+ *
+ * The same `auto-fit` collapse the store, the perk tree and the Buffs sheet use,
+ * so a frame too narrow for two columns falls back to one with no media query.
+ */
+.skin-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /*
+   * Named rows, so the two columns share them: heading, description, tiles.
+   *
+   * They used to stack independently under `align-items: start`, which meant
+   * each column's tiles began wherever its own prose happened to end. The
+   * miner's description is one line and the cats' is two, so every row of cat
+   * tiles sat 18.09px below the matching row of miner tiles — measured, and the
+   * whole of playtest #9's fifth note. The tiles themselves were already
+   * identical; it was never a tile bug.
+   */
+  grid-template-rows: auto auto auto;
+  gap: 0 0.9rem;
+}
+
+/*
+ * `subgrid` rather than a `min-block-size` on the description.
+ *
+ * A fixed height would be a guess at how many lines the longest of the two
+ * paragraphs wraps to, which changes with the frame width and again the next
+ * time either sentence is edited. Sharing the parent's rows makes the taller
+ * description size the row for both columns, whatever it happens to be.
+ *
+ * Where `subgrid` is not supported the declaration is dropped and the column
+ * falls back to what it does today: its own rows, and the misalignment. That is
+ * the right way for this to fail.
+ */
+.skin-column {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  min-inline-size: 0;
+}
+
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A tile rather than a row: the sprite is the thing being bought, so it gets the
+ * top of the card and the name and the price sit under it. The old cat list put
+ * a 24px sprite at the start of a text row, which read as a bullet.
+ */
+.skin-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.4rem 0.3rem;
+  border: 1px solid var(--rule);
+  text-align: center;
+}
+
+/* The one the miner is wearing, marked the way a selected machine tile is. */
+.skin-tile--worn {
+  border-color: var(--ink);
+  border-width: 2px;
+  padding: calc(0.4rem - 1px) calc(0.3rem - 1px);
+}
+
+/*
+ * The name takes the slack, so the price sits on the tile's bottom edge.
+ *
+ * Grid rows stretch their items, so a row containing a two-line name makes every
+ * tile in it that tall — and without this the shorter tiles' buttons floated in
+ * the middle while the long one's sat at the bottom. One level down from the
+ * columns above, and the same complaint.
+ */
+.skin-tile__name {
+  margin-block-end: auto;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.skin-tile__state {
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+}
+
+
+.machine-tile__band {
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.machine-tile__button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+  inline-size: 100%;
+  padding: 0.25rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.machine-sprite {
+  display: block;
+}
+
+.machine-tile__name {
+  font-size: 0.8rem;
+}
+
+.machine-tile__marker {
+  color: var(--ink-dim);
+}
+
+.machine-tile__detail {
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------- expedition */
+
+/*
+ * The scene takes the room; the controls hug the right edge.
+ *
+ * Both columns used to be fractions — 1.3fr and 1fr — which shares the width out
+ * in proportion rather than by need. At 1440x900 that gave the controls column
+ * 555px to hold a launch button 222px wide, so the button floated in the middle
+ * of a wide empty column while the canvas beside it stopped 570px short of the
+ * panel edge. Playtest #9's first note: "anchor the expedition info (launch
+ * button, encounter info, etc) to the right of the box, and extend the encounter
+ * display to meet it."
+ *
+ * A capped track does both at once. The controls take 26rem and sit against the
+ * right edge; `minmax(0, 1fr)` hands the scene everything else, and the canvas
+ * is already `inline-size: 100%`, so it grows to meet them.
+ *
+ * 26rem rather than something tighter because of the footer, which is `nowrap`
+ * by an earlier decision: auto-continue and the six speed buttons measure 316px
+ * side by side at their smallest, and giving them only that leaves the
+ * auto-continue description wrapping a word to a line. The floor of 20rem is
+ * what stops a narrow-but-not-yet-collapsed frame squeezing them past it.
+ */
+.expedition-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.expedition-canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 8rem;
+  border: 1px solid var(--rule);
+  background: var(--backdrop);
+}
+
+.expedition-meters {
+  margin-block-start: 0.5rem;
+}
+
+.meter__label,
+.meter__note {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+}
+
+.encounter-card {
+  padding: 0.5rem;
+  border: 1px solid var(--ink);
+}
+
+.run-inventory {
+  margin-block-start: 0.6rem;
+}
+
+/*
+ * Overlays the scene it reports on. It is centred rather than filling the stage
+ * so the reward indicators rising at the bottom stay visible behind it, and only
+ * the card itself takes pointer events.
+ */
+/*
+ * A run's condition sits in the panel header beside the depth, because it is
+ * rolled at launch and there is no earlier moment to show it. Boxed so it does
+ * not read as part of the depth label.
+ */
+.run-modifier {
+  padding: 0 0.35rem;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
+ * The summary covers the scene exactly, rather than floating over the middle of
+ * it.
+ *
+ * Measured before this change at 1440x900: the stage is 860x128, and the card
+ * was 836x146 on a banked run and 836x192 on a failed one — 12px narrower than
+ * the box on each side, and spilling out of both ends of it over the meters
+ * above and the carrying list below. Playtest #11, note 2: "it should match it
+ * perfectly."
+ *
+ * Three rows, and the middle one is the only one allowed to grow. A failed run
+ * has a second list of tiles under its own caption, which is 46px this box does
+ * not have; the alternative to letting that row scroll is clipping a haul the
+ * player has just earned.
+ */
+.run-summary {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.2rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px dashed var(--ink);
+  background: var(--surface);
+}
+
+.run-summary--failed {
+  border-style: solid;
+}
+
+/* The outcome and the depth on one line, which is where the returned card's
+   overage came from. */
+.run-summary__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Both sides of the head lose their own spacing: the grid's row gap is what
+   separates this from the haul, and the heading's 5.6px tail on top of it was
+   the last of the failed card's overflow. */
+.run-summary__head .subheading,
+.run-summary__detail {
+  margin: 0;
+}
+
+.run-summary__haul {
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+/*
+ * Tighter inside this card than anywhere else the haul is drawn.
+ *
+ * The tiles carry a 0.5rem tail and the caption a line of its own, which is
+ * 20px of the 37px a failed run overflowed by when this box became the size of
+ * the stage. The caption sits beside its tiles instead: it labels one row, and
+ * a label above a single row is a heading for a list of one.
+ */
+.run-summary__haul .summary-haul {
+  margin-block-end: 0.25rem;
+}
+
+.run-summary__haul .summary-haul__caption {
+  margin-block-end: 0;
+  align-self: center;
+}
+
+.run-summary__lost {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.run-summary__lost .summary-haul {
+  margin-block-end: 0;
+}
+
+/* Smaller than the rest: it is the Company's joke, it is `aria-hidden`, and it
+   is the line this card can most afford to make quiet. */
+.run-summary__notice {
+  margin-block: 0 0.2rem;
+  font-size: 0.66rem;
+}
+
+/* Bottom right, where a dismissal belongs on a box that covers the scene. */
+.run-summary__footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+}
+
+/* ---------------------------------------------------------------- gambling */
+
+.reels {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-block-end: 0.6rem;
+}
+
+.reel {
+  display: grid;
+  place-items: center;
+  inline-size: 3rem;
+  block-size: 3.5rem;
+  border: 2px solid var(--ink);
+  font-size: 1.6rem;
+}
+
+.reels--spinning .reel {
+  animation: reel-flicker 140ms steps(2, end) infinite;
+}
+
+@keyframes reel-flicker {
+  from {
+    color: var(--ink);
+  }
+
+  to {
+    color: var(--ink-faint);
+  }
+}
+
+/*
+ * The stake ladder, shared by all four games.
+ *
+ * Four columns for seven rungs, which puts 10k, 100k and 1M adjacent on the
+ * second row — the playtest note asked for 1M "to the right of the 100k", and it
+ * already was in DOM order; what moved it was the wrapping. A flex row broke
+ * wherever the buttons happened to fit, so where 1M landed depended on the
+ * window width.
+ *
+ *   [  10  ][  50  ][ 250  ][  1K  ]
+ *   [ 10K  ][ 100K ][  1M  ][      ]
+ *   [           Bet it all         ]
+ */
+.wager-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-block: 0.5rem;
+}
+
+/*
+ * Ruled off from the rungs beside it, because it is a different kind of control:
+ * the rungs select, this one plays. Without the separation it reads as an eighth
+ * amount, which is exactly the thing it is not.
+ */
+/*
+ * "Bet it all", on its own row beneath the rungs.
+ *
+ * It is a selection like the rungs now rather than an immediate play, so it is
+ * styled as one of them — but it is not one of the seven, so it gets a row to
+ * itself rather than a fourth cell on the second row. The double border is what
+ * keeps it distinguishable now that `aria-pressed` is the only other thing
+ * separating it from a rung.
+ */
+.action--everything {
+  grid-column: 1 / -1;
+  justify-self: center;
+  inline-size: 60%;
+  border-style: double;
+  border-width: 3px;
+}
+
+.payout-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.payout-table th,
+.payout-table td {
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--rule);
+  text-align: start;
+}
+
+/*
+ * Four games behind one set of tabs. The marker on a tab is a filled square
+ * rather than a colour, for the same reason the rail's attention marker is: this
+ * palette has one ink, and a colour-only signal would say nothing here.
+ */
+.game-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-block-end: 0.6rem;
+  border-block-end: 1px solid var(--rule);
+}
+
+.game-tab {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-block-end: none;
+  color: var(--ink-dim);
+  background: var(--surface);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.game-tab--open {
+  color: var(--ink);
+  background: var(--surface-raised);
+  border-color: var(--ink);
+}
+
+.game-tab__dot {
+  inline-size: 0.35rem;
+  block-size: 0.35rem;
+  background: var(--ink);
+}
+
+.chip-game {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ----------------------------------------------------------------- wheel */
+
+/*
+ * The wheel is now only a place to stand: the pocket inside draws its own
+ * circle, so a border here would be a second ring around the first.
+ */
+.wheel {
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+  margin-block-end: 0.4rem;
+}
+
+/*
+ * Pocket colour, in a palette with no colour.
+ *
+ * Fill pattern rather than hue, and the three are told apart by how much ink
+ * they carry rather than by which ink: red is solid, black is outlined, green is
+ * solid under a hatch. That ordering is deliberate — the two common colours are
+ * each other's opposite, and the rare one is the one that looks unlike both.
+ *
+ * These replace three `.wheel--*` rules that varied only the border style, which
+ * put the whole distinction in a detail two pixels wide and gave the bet buttons
+ * and the session list nothing at all.
+ */
+.pocket {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.pocket--red {
+  background: var(--ink);
+  color: var(--backdrop);
+}
+
+.pocket--black {
+  background: transparent;
+  color: var(--ink);
+}
+
+/*
+ * A dark hatch over the solid fill. `repeating-linear-gradient` is a paint
+ * rather than an image, so it needs no asset and stays crisp at any scale.
+ */
+.pocket--green {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--backdrop) 0 2px,
+      transparent 2px 5px
+    ),
+    var(--ink);
+  color: var(--backdrop);
+  font-weight: 700;
+}
+
+.pocket--chip {
+  min-inline-size: 1.5em;
+  padding: 0 0.2em;
+  font-size: 0.7rem;
+}
+
+.pocket--wheel {
+  inline-size: 2.6rem;
+  block-size: 2.6rem;
+  border-width: 2px;
+  border-radius: 50%;
+  font-size: 1.4rem;
+}
+
+/* Colour alone, with no number: the swatch on a Red, Black or Green button. */
+.pocket--swatch {
+  inline-size: 0.7em;
+  block-size: 0.7em;
+  margin-inline-end: 0.3em;
+  vertical-align: -0.05em;
+}
+
+.pocket-legend {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 0.6rem;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+}
+
+/* Each swatch hugs the word it labels, so the pairs read as pairs. */
+.pocket-legend .pocket {
+  margin-inline-start: 0.4rem;
+}
+
+.pocket-legend .pocket:first-child {
+  margin-inline-start: 0;
+}
+
+.wheel--spinning {
+  animation: reel-flicker 140ms steps(2, end) infinite;
+}
+
+.bet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: 0.25rem;
+  margin-block-end: 0.5rem;
+}
+
+.bet-grid__option {
+  font-size: 0.68rem;
+}
+
+/* ------------------------------------------------------------- blackjack */
+
+.blackjack-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  margin-block-end: 0.6rem;
+  border: 1px solid var(--rule);
+  min-block-size: 7rem;
+}
+
+.blackjack-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.blackjack-side__label {
+  color: var(--ink-dim);
+  font-size: 0.68rem;
+}
+
+.card-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  min-block-size: 2.6rem;
+  /*
+   * A long hand scrolls inside its own row rather than widening the window.
+   * Six-deck blackjack with no splitting tops out around eleven cards, which
+   * fits at this width — the guard is for the frame, not for the common case.
+   */
+  overflow-x: auto;
+}
+
+.card {
+  display: grid;
+  place-items: center;
+  inline-size: 1.9rem;
+  block-size: 2.6rem;
+  border: 2px solid var(--ink);
+  background: var(--surface-raised);
+  font-size: 0.9rem;
+}
+
+.card--facedown {
+  border-style: dashed;
+  color: var(--ink-faint);
+  background: var(--surface);
+}
+
+.blackjack-outcome {
+  margin: 0 0 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px dashed var(--rule);
+  font-size: 0.74rem;
+  /*
+   * Reserved whether or not there is an outcome to print. It used to be rendered
+   * only when a hand had settled, so it appeared on Stand and vanished on Deal —
+   * moving everything below it by a line, twice per hand.
+   */
+  min-block-size: 1.4rem;
+}
+
+/* Present, sized, and saying nothing. */
+.blackjack-outcome--empty {
+  visibility: hidden;
+}
+
+.blackjack-outcome--won {
+  border-style: solid;
+  border-color: var(--ink);
+}
+
+.action-row {
+  display: flex;
+  gap: 0.35rem;
+  margin-block: 0.5rem;
+}
+
+/*
+ * Where blackjack's play controls live, at one height in both states.
+ *
+ * Hit/Stand/Double and "Deal for N chips" are each a single row of `.action`
+ * buttons, so they measure the same — but the play row carries `margin-block`
+ * and the Deal button does not, which was enough to shift it by a line. The box
+ * owns the spacing instead, and reserves the row's height so nothing moves in
+ * the instant between one control unmounting and the other appearing.
+ */
+.blackjack-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-block-size: 2.1rem;
+  margin-block: 0.5rem;
+}
+
+.blackjack-controls .action-row {
+  margin-block: 0;
+}
+
+/* The full width its three-button counterpart occupies. */
+.action--deal {
+  inline-size: 100%;
+}
+
+.action-row .action {
+  flex: 1;
+}
+
+/* ----------------------------------------------------------- depth wager */
+
+.wager-pending {
+  padding: 0.5rem;
+  margin-block-end: 0.6rem;
+  border: 2px solid var(--ink);
+}
+
+.field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  align-items: center;
+  margin-block: 0.4rem;
+  font-size: 0.74rem;
+}
+
+.field__label {
+  min-inline-size: 100%;
+  color: var(--ink-dim);
+}
+
+.field__input {
+  inline-size: 5rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.field__slider {
+  flex: 1;
+  min-inline-size: 8rem;
+}
+
+.field__value {
+  min-inline-size: 5rem;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.rule-list {
+  margin: 0.4rem 0 0;
+  padding-inline-start: 1rem;
+  color: var(--ink-dim);
+  font-size: 0.7rem;
+}
+
+.rule-list li {
+  margin-block-end: 0.2rem;
+}
+
+/* -------------------------------------------------------- gear and totems */
+
+/*
+ * Two columns: the tank and the pickaxe side by side, with each one's trinkets
+ * in a second row of the same shape directly underneath. Both rows use this
+ * class, so the collection columns line up with the cards they belong to
+ * without either knowing about the other.
+ */
+.gear-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.gear-card {
+  padding: 0.5rem;
+  border: 1px solid var(--rule);
+}
+
+.gear-card__header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-block-end: 0.4rem;
+}
+
+.trinket-group__heading {
+  margin: 0 0 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.trinket-group .item-grid {
+  margin-block-start: 0;
+}
+
+/* ------------------------------------------------------------ cache opening */
+
+/*
+ * Above the window layer, because it reports something that has already
+ * happened: the player should not have to find it behind a panel.
+ *
+ * **It does not block the dashboard.** Every window in this game is non-modal,
+ * and the first version of this dimmed the screen and swallowed clicks — which
+ * made the store's own close button unreachable while the summary was up. The
+ * layer ignores pointer events and the panel takes them back, exactly as
+ * `.window-layer` does.
+ */
+.cache-opening-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.cache-opening-layer .window {
+  pointer-events: auto;
+}
+
+.cache-opening {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cache-opening__crate {
+  padding: 1.5rem 0;
+  animation: cache-shake 140ms steps(2, end) infinite;
+}
+
+@keyframes cache-shake {
+  0% {
+    transform: translate(-2px, 0) rotate(-2deg);
+  }
+  50% {
+    transform: translate(2px, -1px) rotate(2deg);
+  }
+  100% {
+    transform: translate(-2px, 0) rotate(-2deg);
+  }
+}
+
+.cache-opening__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  max-block-size: 16rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* The whole grid arrives at once. A hundred sequential reveals is a wait. */
+.cache-opening__grid--enter {
+  animation: cache-reveal 260ms ease-out;
+}
+
+@keyframes cache-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cache-opening__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: center;
+  inline-size: 6.5rem;
+  padding: 0.35rem 0.25rem;
+  border: 1px solid var(--rule);
+  text-align: center;
+}
+
+.cache-opening__name {
+  font-size: 0.7rem;
+}
+
+.cache-opening__detail {
+  font-size: 0.62rem;
+  color: var(--ink-dim);
+}
+
+.cache-opening__count {
+  position: absolute;
+  inset-block-start: -0.35rem;
+  inset-inline-end: -0.35rem;
+  padding: 0 0.2rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cache-opening__crate,
+  .cache-opening__grid--enter {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- stat sheet */
+
+/*
+ * The Buffs sheet, in columns.
+ *
+ * The same `auto-fit` collapse the perk tree and the store use, so a frame too
+ * narrow for two falls back to one with no media query. 16rem is where a stat
+ * row's label and its "base -> final" value still share a line: the value is
+ * `white-space: nowrap` and cannot give, so below that the label is what breaks.
+ */
+/*
+ * A column flow, not a grid of aligned rows.
+ *
+ * A grid row is as tall as the tallest thing in it, and these five groups are
+ * nothing like the same height — so a short one left the rest of its row empty.
+ * Measured at 1440x900: Gear ended at 222 and Casino began at 345, **123px of
+ * nothing**, against the 12px between every other pair. Expedition, 111px taller
+ * beside Gear, was holding the row open (playtest #10, note 2).
+ *
+ * Reordering or padding the groups would fix today's five heights and no others.
+ * Every contribution adds a line, so the heights change as trinkets, perks,
+ * totems and cats are earned — and the tallest group is not always the same one.
+ * A column flow has no rows to hold open, so it is right at every combination.
+ * `column-fill: balance` is the default and is what makes the two columns come
+ * out level.
+ *
+ * The width is in drawn pixels for the same reason the grid's track floor was:
+ * this window fills its frame, so it lays out at `100% / scale` and a plain
+ * 16rem would be measured against a box wider than the one on screen. The `2`
+ * caps the count; the width is what drops it to one on a narrow frame.
+ */
+.stat-sheet-groups {
+  columns: calc(16rem / var(--fit-scale, 1)) 2;
+  column-gap: 0.9rem;
+}
+
+/*
+ * `break-inside: avoid` is not decoration: without it the balancer is free to
+ * end a column half way through a group and carry the rest to the next one, so
+ * a five-row group becomes three rows and two.
+ *
+ * Separation moves to `margin-block-end`. A column flow has no row gap to
+ * inherit, and a start margin on the first group of the second column is
+ * collapsed away by some engines and kept by others — an end margin is the one
+ * every group has for the same reason.
+ */
+.stat-sheet-group {
+  break-inside: avoid;
+  margin-block-end: 0.9rem;
+  min-inline-size: 0;
+}
+
+.stat-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stat-sheet__row {
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--rule);
+}
+
+/* A stat nothing is touching still shows, dimmed. A sheet whose rows appear and
+   disappear as trinkets are equipped is harder to read than one that does not. */
+.stat-sheet__row--unchanged {
+  border-style: dashed;
+  color: var(--ink-dim);
+}
+
+.stat-sheet__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.stat-sheet__label {
+  font-size: 0.76rem;
+}
+
+.stat-sheet__value {
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-sheet__base {
+  color: var(--ink-dim);
+}
+
+.stat-sheet__arrow {
+  color: var(--ink-faint);
+}
+
+.stat-sheet__detail {
+  margin: 0.15rem 0 0;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+}
+
+.stat-sheet__sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.3rem 0 0;
+  padding: 0.3rem 0 0;
+  border-block-start: 1px solid var(--rule);
+  list-style: none;
+}
+
+.stat-sheet__source {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+}
+
+.stat-sheet__qualifier {
+  color: var(--ink-faint);
+}
+
+.stat-sheet__effect {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------- settings and feedback */
+
+.settings-grid {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.setting {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.74rem;
+}
+
+.setting__label {
+  min-inline-size: 7rem;
+  color: var(--ink-dim);
+}
+
+.setting__value {
+  min-inline-size: 2rem;
+  text-align: end;
+}
+
+.setting--toggle .setting__label {
+  min-inline-size: 0;
+}
+
+.confirm,
+.welcome-back {
+  margin-block-start: 0.5rem;
+  padding: 0.5rem;
+  border: 2px solid var(--ink);
+}
+
+.feedback-strip {
+  position: fixed;
+  inset-block-end: 0.75rem;
+  inset-inline-start: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-inline-size: 26rem;
+  pointer-events: none;
+}
+
+.feedback {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  font-size: 0.72rem;
+  animation-name: feedback-life;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* Holds full opacity for most of the message's life, then fades out. */
+@keyframes feedback-life {
+  0%,
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.feedback__count {
+  color: var(--ink-dim);
+}
+
+.feedback--negative {
+  border-style: dashed;
+  color: var(--ink-dim);
+}
+
+/*
+ * Bottom left, where nothing else is fixed.
+ *
+ * It has been moved twice, and both moves were the same bug. It sat at
+ * `inset-inline-end: 0.75rem`, in the rail's own column, which was harmless only
+ * while the rail was short enough to end above it — at twelve entries its
+ * disclosure button covered the last rail button and swallowed every click aimed
+ * at it. Moving it to `7.25rem` cleared the rail and put it squarely in the lane
+ * the tutorial card uses, where it swallowed Next and Skip instead.
+ *
+ * The right-hand side of this screen is spoken for: the rail owns the edge, the
+ * window layer owns the strip beside it, and the tutorial card shares that
+ * strip. A developer overlay belongs in none of them. Bottom left it overlaps
+ * the expedition scene, which is drawn rather than clicked.
+ */
+.dev-panel {
+  position: fixed;
+  inset-block-end: 0.75rem;
+  inset-inline-start: 0.75rem;
+  max-inline-size: 24rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px dotted var(--rule);
+  background: var(--surface);
+  font-size: 0.68rem;
+}
+
+.dev-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.5rem;
+  margin: 0.4rem 0 0;
+  max-block-size: 16rem;
+  overflow: auto;
+}
+
+.dev-list dt {
+  color: var(--ink-dim);
+}
+
+.dev-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------- run commitments */
+
+/*
+ * One chip on the expedition panel's heading row.
+ *
+ * This was a stacked list in the scene column, which fitted one commitment and
+ * overflowed the panel at two — a contract, a locked exit and a staked wager can
+ * all be live on the same descent. On the heading row it is a single line
+ * whatever the run is carrying, and the "+n" stands for the rest.
+ */
+.run-commitment {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--rule);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+/*
+ * A dashed border for something imposed, solid for something offered. The
+ * distinction between "this pays if you reach it" and "this holds the exit until
+ * you reach it" is the whole design of the three systems that share this surface,
+ * so it is visible without reading.
+ */
+.run-commitment--imposed {
+  border-style: dashed;
+  border-color: var(--ink);
+}
+
+/*
+ * A staked commitment gets a double border: it is neither offered nor imposed
+ * but bought, and it is the only one of the three that has already cost the
+ * player something.
+ */
+.run-commitment--staked {
+  border-style: double;
+  border-width: 3px;
+  border-color: var(--ink);
+}
+
+.run-commitment__name {
+  color: var(--ink);
+}
+
+.run-commitment__target {
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+/* Fixed, so the depth label beside it never shifts as the bar fills. */
+.run-commitment .progress {
+  flex: none;
+  inline-size: 4rem;
+}
+
+.run-commitment__more {
+  padding-inline-start: 0.3rem;
+  border-inline-start: 1px solid var(--rule);
+  color: var(--ink-dim);
+}
+
+/* A chip on the heading row is taller than the heading's own text, so the row
+   centres rather than sitting them on a shared baseline. */
+.panel--expedition .panel__header {
+  align-items: center;
+}
+
+/* ------------------------------------------------------- run summary haul */
+
+.summary-haul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.summary-haul__item {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Lost items read as a subtraction rather than as a second positive row: dashed
+ * and dimmed, with the amount already signed by the component. The whole
+ * question after a failure is what the roll took, so it has to be legible as a
+ * loss at a glance and not mistaken for more of the haul.
+ */
+.summary-haul--lost .summary-haul__item {
+  border-style: dashed;
+  color: var(--ink-dim);
+  opacity: 0.75;
+}
+
+.summary-haul__caption {
+  margin-block-end: 0.25rem;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.64rem;
+}
+
+/* ---------------------------------------------------------- statistics */
+
+.stats-window {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-inline-size: 18rem;
+}
+
+.stats-group + .stats-group {
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+/*
+ * Label left, value right, and an optional detail line spanning both. A grid
+ * rather than a flex row so every value in a group lines up regardless of how
+ * long its label is.
+ */
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.75rem;
+  align-items: baseline;
+}
+
+.stats-row__label {
+  font-size: 0.74rem;
+  color: var(--ink-dim);
+}
+
+.stats-row__value {
+  margin: 0;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.stats-row__detail {
+  grid-column: 1 / -1;
+  margin: 0 0 0.15rem;
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------ developer menu */
+
+/*
+ * Deliberately unremarkable. This ships in production and is reached only by an
+ * undocumented chord, so it borrows the window chrome rather than announcing
+ * itself with styling of its own.
+ */
+.dev-menu-layer {
+  position: fixed;
+  inset-block: 0.75rem;
+  inset-inline-start: 0.75rem;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  /*
+   * Widened for the perk grid. At 32rem a perk field's label and its 6rem input
+   * did not fit the 9rem grid track below, and the overflow grew a horizontal
+   * scrollbar on the window — which is the playtest note, and "just increase the
+   * box width" is what it asked for.
+   */
+  max-inline-size: 44rem;
+  pointer-events: none;
+}
+
+.dev-menu-layer > * {
+  pointer-events: auto;
+}
+
+/*
+ * The developer window is wider than the rail windows.
+ *
+ * Widening `.dev-menu-layer` alone did nothing: `.window` sets its own
+ * `inline-size: min(24rem, 34vw)`, so the layer was a roomier box around a frame
+ * that stayed 24rem. That is why the perk grid still fell to a single column
+ * after the layer grew — the overflow was gone, but so was the point.
+ *
+ * Scoped to this layer so no rail window is affected.
+ */
+.dev-menu-layer .window {
+  inline-size: min(44rem, calc(100vw - 2rem));
+}
+
+.dev-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-block-size: 70vh;
+  overflow-y: auto;
+  /*
+   * Nothing here is worth a horizontal scrollbar. Belt and braces alongside the
+   * widened layer and the wrapping label below: any one of the three could be
+   * defeated by a longer perk name than the tree currently has.
+   */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.dev-section {
+  border-block-start: 1px solid var(--rule);
+  padding-block-start: 0.35rem;
+}
+
+.dev-section__body {
+  margin-block-start: 0.35rem;
+}
+
+.dev-grid {
+  display: grid;
+  /* 13rem, not 9rem: a perk label plus a 6rem input needs the room. */
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.3rem 0.6rem;
+}
+
+/* A branch of the perk tree, inside the Perks section. */
+.dev-subsection + .dev-subsection {
+  margin-block-start: 0.5rem;
+}
+
+.dev-subsection__name {
+  margin: 0 0 0.2rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.dev-field {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+}
+
+.dev-field__label {
+  color: var(--ink-dim);
+  /*
+   * Wraps as a last resort. It was `nowrap`, which meant a long label could not
+   * give and pushed its grid track wide instead — the actual mechanism behind
+   * the horizontal scrollbar, rather than the window being too narrow.
+   */
+  min-inline-size: 0;
+}
+
+.dev-field__input {
+  inline-size: 6rem;
+  min-inline-size: 0;
+  padding: 0.1rem 0.25rem;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.7rem;
+}
+
+.dev-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.7rem;
+}
+
+.dev-row__toggle {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  flex: 1 1 10rem;
+}
+
+.fatal-error {
+  max-inline-size: 46rem;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  border: 2px solid var(--ink);
+}
+
+/*
+ * Hidden to the eye, present to the text layer.
+ *
+ * `.action__separator` is listed here rather than given the `.sr-only` class,
+ * so that a test or a script asking a tile for its `.sr-only` prose does not
+ * also collect the comma inside its button. Same hiding, different meaning:
+ * `.sr-only` is prose, `.action__separator` is punctuation.
+ */
+.sr-only,
+.action__separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .expedition-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1050px) {
+  /* Below this width the page scrolls instead, in the priority order the MVP
+     defines: resources, casino/upgrade, expedition/loadout, gambling/prestige. */
+  .game-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    block-size: auto;
+    min-height: 100vh;
+    /*
+     * `casino` is the column holding the floor and the litterbox, so there is no
+     * separate row for the shelf here. There was not really one before either:
+     * this list named an area `cats` that nothing claimed — `.panel--cats` asked
+     * for `litterbox` — so below this width the shelf fell out of the named
+     * layout and was auto-placed. It stacked in roughly the right place by luck.
+     */
+    grid-template-areas:
+      "topbar"
+      "rail"
+      "casino"
+      "machines"
+      "expedition";
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+
+  /*
+   * Stacked, there is no row for the log to fill, so it returns to normal flow
+   * and takes a plain cap instead.
+   */
+  .topbar__log {
+    position: static;
+  }
+
+  .topbar__log > .panel--log {
+    position: static;
+    max-block-size: 9.5rem;
+  }
+
+
+  .window-rail__list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  /* Below this width the windows fill the screen edge to edge instead. */
+  .window-layer {
+    inset-inline: 0.75rem;
+    flex-direction: column-reverse;
+    flex-wrap: nowrap;
+    overflow: auto;
+  }
+
+  .window {
+    inline-size: 100%;
+  }
+
+  /* Two columns of gear need the width a wide window has; below this the
+     window is the whole screen and the cards stack instead. */
+  .gear-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    overflow: visible;
+  }
+
+  .panel__body {
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reels--spinning .reel {
+    animation: none;
+  }
+
+  .feedback,
+  .reward-pop,
+  .critical-pop {
+    animation: none;
+  }
+
+  .machine-sprite {
+    transform: none !important;
+  }
+}
+
+/* ------------------------------------------------- icon-forward collections */
+
+.slot-grid,
+.item-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * The three totem slots, centred under their own heading.
+ *
+ * A modifier rather than a change to the shared rule above: the gear panel's
+ * trinket slots use the same grid and must stay left aligned, because each one
+ * sits directly beneath the tank or the pickaxe it belongs to and centring
+ * would float it away from the thing it modifies.
+ *
+ * The totem slots belong to nothing above them — they are the whole of their
+ * section — so three tiles hard against the left edge read as the start of a
+ * row that ran out rather than as a complete set.
+ */
+.slot-grid--centred {
+  justify-content: center;
+}
+
+/*
+ * The selected trinket's line, held off the tiles above it.
+ *
+ * It rendered flush against the row of upgrade buttons, which put a sentence
+ * about the whole collection hard against the bottom edge of one tile in it. The
+ * rule earns its place for the same reason `.store-row` and `.perk-branch` have
+ * one: it marks where a group of things ends and a line about them begins.
+ */
+.trinket-detail {
+  margin-block-start: 0.6rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.item-grid > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.slot-tile,
+.item-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+  padding: 0.3rem;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.slot-tile:hover:not(:disabled),
+.item-tile:hover {
+  background: var(--surface-raised);
+}
+
+.slot-tile--locked {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+/* An empty totem slot: available, but nothing to click until something is
+   equipped from the list below. Dashed like a locked slot, without the refusal. */
+.slot-tile--empty {
+  border-style: dashed;
+}
+
+/* A slot that can take the armed trinket. Paired with the helper text above the
+   grid so the cue is never carried by the border alone. */
+.slot-tile--target {
+  border-color: var(--ink);
+  border-width: 2px;
+  padding: calc(0.3rem - 1px);
+}
+
+.item-tile--selected {
+  border-color: var(--ink);
+  border-width: 2px;
+  padding: calc(0.3rem - 1px);
+}
+
+.slot-tile__empty {
+  display: grid;
+  place-items: center;
+  inline-size: 36px;
+  block-size: 36px;
+  color: var(--ink-faint);
+}
+
+.slot-tile__index {
+  font-size: 0.6rem;
+  color: var(--ink-dim);
+}
+
+/* The fragment-count badge that used to sit opposite this one is gone: it
+   repeated the count already printed on the button below the tile. */
+.item-tile__equipped {
+  position: absolute;
+  inset-block-start: -0.35rem;
+  inset-inline-start: -0.35rem;
+  padding: 0 0.2rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  font-size: 0.6rem;
+  line-height: 1.2;
+}
+
+.item-tile__action {
+  font-size: 0.62rem;
+  padding: 0.15rem 0.3rem;
+}
+
+/*
+ * Eight grades in a monochrome palette are eight labels that all look alike, so
+ * weight and border do the work colour normally would: E-A are hairline and
+ * regular, S/SS/SSS are bold with a doubled border. No hue is introduced.
+ */
+.grade-badge {
+  display: inline-flex;
+  min-inline-size: 1.6em;
+  padding: 0 0.2em;
+  border: 1px solid var(--ink-dim);
+  color: var(--ink-dim);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  justify-content: center;
+}
+
+.grade-badge--high {
+  border-style: double;
+  border-width: 3px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Collapsible panel sections, so a dense panel need not scroll. */
+.subheading--summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.subheading--summary::-webkit-details-marker {
+  display: none;
+}
+
+.subheading--summary::before {
+  content: "+ ";
+  color: var(--ink-dim);
+}
+
+details[open] > .subheading--summary::before {
+  content: "- ";
+}
+
+.stat-value__bonus {
+  color: var(--ink-dim);
+}
+
+/* ----------------------------------------------------- expedition scene */
+
+.expedition-scene {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.expedition-stage {
+  position: relative;
+}
+
+/* Pinned to the bottom so it never moves as the encounter card changes. */
+.run-inventory {
+  margin-block-start: auto;
+  padding-block-start: 0.5rem;
+}
+
+.run-inventory__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  list-style: none;
+}
+
+.run-chip {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--rule);
+}
+
+/*
+ * The "Kept" caption, above the row of things this run has already banked.
+ *
+ * Small and dim: it is a label on a short list, not a section heading, and the
+ * panel already has one of those.
+ */
+.run-inventory__caption {
+  margin: 0 0 0.2rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/*
+ * A solid border where cargo has a hairline one: these cannot be lost, and the
+ * difference between "carried" and "kept" is the only thing the two rows differ
+ * in. Not a colour — this palette has one ink.
+ */
+.run-chip--secured {
+  border-color: var(--ink);
+}
+
+.run-chip__amount {
+  font-size: 0.75rem;
+}
+
+.reward-pops {
+  position: absolute;
+  inset-block-end: 0.5rem;
+  inset-inline-start: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.reward-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  animation-name: reward-rise;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+.reward-pop--static {
+  animation: none;
+}
+
+.reward-pop__item {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.reward-pop__item--cost {
+  border-style: dashed;
+  color: var(--ink-dim);
+}
+
+/*
+ * Crits sit above the reward pops and rise faster, so the two never occupy the
+ * same line even when a seam crits on the strike that breaks it.
+ */
+.critical-pops {
+  position: absolute;
+  inset-block-end: 4.5rem;
+  inset-inline-start: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.critical-pop {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.1rem 0.35rem;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  animation-name: critical-rise;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+.critical-pop--static {
+  animation: none;
+}
+
+.critical-pop__label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.critical-pop__damage {
+  font-size: 0.66rem;
+  color: var(--ink-dim);
+}
+
+@keyframes critical-rise {
+  from {
+    opacity: 1;
+    transform: translateY(0.4rem) scale(1.15);
+  }
+
+  25% {
+    transform: translateY(0) scale(1);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-1.2rem) scale(1);
+  }
+}
+
+@keyframes reward-rise {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-1.6rem);
+  }
+}
+
+/* The launch control is the primary call to action on the surface. */
+.expedition-launch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  /*
+   * Space the centring cannot spend.
+   *
+   * `justify-content: center` hands out whatever is left over after the content,
+   * and a packed loadout leaves nothing: the row of supplies above the button
+   * takes it. Measured with all six packed, at 1440x900 and at 1280x720, the
+   * button's bottom edge and the footer's top border came out on the same line —
+   * playtest #10's fourth note, and its "no space when consumables are applied"
+   * is exact.
+   *
+   * Padding rather than a margin, because the footer's own separation is
+   * `margin-block-start: auto` and a margin here would be competing with it for
+   * the same nothing. `box-sizing: border-box` means this comes out of the
+   * `block-size: 100%` above, so it is subtracted before the centring runs
+   * rather than added after it.
+   */
+  padding-block-end: 0.75rem;
+  text-align: center;
+}
+
+.action--launch {
+  padding: 0.7rem 1.6rem;
+  border-width: 2px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Auto-continue on the left, speed on its right, pinned to the bottom of the
+ * controls column. The rule and the push-to-bottom moved off `.auto-continue`
+ * and onto the row, so the two read as one footer rather than as a bordered
+ * block with a stray button group above it.
+ */
+/*
+ * `nowrap`, so speed stays beside auto-continue rather than dropping below it
+ * the moment the column narrows. Letting the row wrap put the two on top of each
+ * other at widths a normal window actually hits — measured, the two natural
+ * widths came within five pixels of the column at 1280x1000, which is far too
+ * close to leave to chance.
+ *
+ * Auto-continue is the one that gives: its description wraps to another line,
+ * where the speed buttons have nothing to wrap into but their own rows.
+ */
+.expedition-footer {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-block-start: auto;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.auto-continue {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+/*
+ * "Stop at" does not need the settings window's label column.
+ *
+ * `.setting__label` reserves 7rem so the sliders in Settings line up under each
+ * other. Nothing lines up with this one — it is the only slider in the footer —
+ * and 112px of reservation in a 26rem column is what pushed the percentage off
+ * the end of its own row once the controls column was capped. `.run-speed`
+ * already overrides the same rule a few lines down, for the same reason.
+ */
+.auto-continue .setting__label {
+  min-inline-size: 0;
+}
+
+/*
+ * A range input carries an intrinsic width of its own — about 129px — and
+ * `min-inline-size: auto` on a flex item means it will not go below it. In a
+ * fixed-width footer that is the one control that should give, since it is the
+ * only one whose size carries no information.
+ */
+.auto-continue input[type="range"] {
+  flex: 1 1 4rem;
+  min-inline-size: 0;
+}
+
+/*
+ * The six speeds as a fixed 2x3 array, with the label on its own row above.
+ *
+ * This was a wrapping flex capped at 14rem, on the reasoning that six buttons
+ * belong in two rows rather than one. They did wrap into two rows — but *where*
+ * they broke was decided by how wide the buttons happened to be, and they are
+ * not the same width: "1x" is two characters and "32x" is three. So the array
+ * came out 4-and-2 or 3-and-3 depending on the rank reached and the column
+ * width, and the label competed for space on the first row.
+ *
+ * A three-column grid states the shape instead of hoping for it, and `1fr`
+ * columns make every button the same width, which is what makes it read as one
+ * control rather than six.
+ */
+.run-speed {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  /*
+   * Stretch, not centre. The selected speed carries `.action--primary`, which is
+   * a 2px border against everything else's 1px — so it is two pixels taller, and
+   * centring let it overhang its row-mates by a pixel top and bottom. In an
+   * array that reads as one button sitting slightly proud of the others, and it
+   * moves every time the player changes speed. Stretching gives every cell in a
+   * row the same height and the array stays flat.
+   */
+  align-items: stretch;
+  align-content: start;
+  max-inline-size: 11rem;
+}
+
+/*
+ * `.setting__label` reserves 7rem so the sliders in the settings window line up
+ * in a column. Here it spans the row above the array, where 7rem would push the
+ * grid wider than the buttons need.
+ */
+.run-speed .setting__label {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+}
+
+/*
+ * Every rung reserves the selected one's border.
+ *
+ * `.action--primary` is 2px where `.action` is 1px, so without this the row
+ * holding the current speed is two pixels taller than the other — and which row
+ * that is changes every time the player picks a different speed, so the array
+ * twitches under the cursor. Giving all six the same border costs nothing (the
+ * selected one is still marked, by weight and by `aria-pressed`) and makes both
+ * rows the same height whatever is selected.
+ */
+.run-speed .action {
+  border-width: 2px;
+  padding: calc(0.35rem - 1px) calc(0.6rem - 1px);
+}
+
+/*
+ * Kept here rather than in the shared breakpoint block near the top of the file:
+ * a media query adds no specificity, so an override written up there loses to
+ * these base rules purely on source order. That is exactly what happened on the
+ * first attempt — the footer went on refusing to wrap below 1050px because the
+ * `nowrap` above is written later in the file than the override was.
+ */
+@media (max-width: 1050px) {
+  .expedition-footer {
+    flex-wrap: wrap;
+  }
+
+  .run-speed {
+    max-inline-size: none;
+  }
+}
+
+.expedition-controls {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+/*
+ * The encounter box, allocated for the tallest encounter, always.
+ *
+ * Playtest #14, note 7: *"the encounter box should be allocated larger so that
+ * any encounter doesn't need to resize it."* The panel is `fit fill`, so its
+ * contents are scaled to whatever their natural height is — and the natural
+ * height was following the run. Measured at 1440x900: 243px on the surface,
+ * 293px at an ordinary encounter, 368px at a three-option choice, settling at
+ * 1.000, 0.958 and 0.761. The canvas alone went 128px to 97px mid-run, and every
+ * glyph in the panel moved with it.
+ *
+ * 16rem is measured, not chosen. The tallest thing this slot holds is a
+ * three-option choice card at its longest authored text, and it is **250.6px**
+ * at the controls column's width, leaving 5px of headroom. `.expedition-layout`
+ * gives that column `minmax(20rem, 26rem)`, and the track resolves to 26rem at
+ * every viewport where two columns exist at all — below 900px the layout
+ * collapses to one column and the card is wider and shorter still. So 26rem is
+ * the only width this has to fit, and it fits with nothing clipped and no text
+ * shortened.
+ *
+ * **Measure this in natural units, not drawn ones.** The first version of this
+ * reserve was 15rem, from a card measured with `getBoundingClientRect` inside a
+ * panel that was already scaled to 0.958 — so it was 4% short, and the panel
+ * still grew by 10px when a fork arrived. Everything inside `.panel__fit` is
+ * drawn at `--fit-scale`; divide by it, or read `scrollHeight`, which layout
+ * gives unscaled.
+ *
+ * The reserve costs what it reserves: the panel settles at 0.751 at 1440x900 and
+ * holds it from launch to summary, rather than moving between 1.000 and 0.761.
+ * That is the trade the note asks for — it may resize with the window, and not
+ * with the encounter. It is also why this panel passes a lower `fitFloor`: at
+ * 1440x700 the reserve needs 0.521, which is inside the shared floor of 0.55.
+ *
+ * It also covers the scene column for free, which the note does not mention and
+ * a player would still have seen: the Carrying list grows from 219px to 301px as
+ * cargo accumulates, and 16rem of slot over the footer puts this column above
+ * that. `shell.spec.ts`'s "holds one height from launch to summary" is what keeps
+ * both true — if a card ever outgrows the reserve the panel goes back to
+ * resizing silently, and only a test watching the natural height would notice.
+ */
+.expedition-slot {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 16rem;
+}
+
+/* ------------------------------------------------------- consumables */
+
+/*
+ * One supply to a row, in a column of its own.
+ *
+ * It used to be a wrapping grid of `min(19rem, 100%)` tracks spanning the whole
+ * window, which is what made this section 634px tall and the window scroll. In a
+ * column there is nothing to wrap into and nothing to gain from trying.
+ */
+.consumable-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Sprite, then the text, then the price — with the price under the text rather
+ * than beside it.
+ *
+ * A third column for the button was the obvious shape and is the wrong one at
+ * this width: an `auto` track sizes to its widest child, and the disabled note
+ * ("Not while an expedition is under way.") is long enough that it left the
+ * description twenty pixels wide, wrapping a word to a line. So the button keeps
+ * the second column and sits under the words it is buying.
+ */
+.consumable-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.3rem 0.6rem;
+  align-items: start;
+  padding: 0.4rem;
+  border: 1px solid var(--rule);
+}
+
+.consumable-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.consumable-tile__name {
+  font-size: 0.82rem;
+}
+
+/*
+ * The effect, not the flavour, is what the purchase is decided on — so it sits
+ * directly under the name and is the one line that never wraps away.
+ */
+.consumable-tile__effect {
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/*
+ * Under the text, not under the sprite: the second column, so the price lines up
+ * with the name and the effect it belongs to and the tile reads as one block
+ * rather than as an L.
+ */
+.consumable-tile__buy {
+  grid-column: 2;
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.consumable-tile__held {
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+}
+
+/* The row above the Launch button. */
+.expedition-supplies {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-block-end: 0.5rem;
+}
+
+.expedition-supplies__label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.expedition-supplies__list {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.expedition-supplies__item {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--rule);
+  font-size: 0.72rem;
+}
