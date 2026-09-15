@@ -48,7 +48,7 @@ Had enough of this old joint? Start again! There's a perk tree and everything. O
 
 ## Running Locally
 
-Use Node.js 24 and npm 11 (the repository records npm 11.6.1). No API keys or backend services are needed.
+Use Node.js 24 and npm 11. No API keys or backend services are needed.
 
 ```bash
 npm ci
@@ -88,12 +88,6 @@ The production game includes a save editor opened with **Ctrl + Shift + Alt + D*
 - `src/app`, `src/ui`, `src/rendering`, `src/audio`: runtime, interface, procedural visuals, and audio.
 - `src/persistence`: save validation, migration, import/export, and browser storage.
 - `src/tests`: unit, integration, and browser tests.
-
-## Publishing
-
-Commit the source and `package-lock.json`. Dependencies, build output, test reports, local tooling, environment files, and private development notes in `docs/` are ignored.
-
-`npm run build` produces a static site in `dist/`. For a GitHub Pages project site, build with `npm run build -- --base=/YOUR-REPOSITORY/` and publish the resulting `dist/` directory. Publishing the repository alone does not deploy the game.
 
 ## Rights and permissions
 
